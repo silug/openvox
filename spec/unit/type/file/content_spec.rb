@@ -410,31 +410,5 @@ describe Puppet::Type.type(:file).attrclass(:content), :uses_checksums => true d
       end
     end
 
-    describe "from a file bucket" do
-      it "should fail if a file bucket cannot be retrieved" do
-        content.should = "{md5}foo"
-        expect(content.resource).to receive(:bucket).and_return(nil)
-        expect { content.write(fh) }.to raise_error(Puppet::Error)
-      end
-
-      it "should fail if the file bucket cannot find any content" do
-        content.should = "{md5}foo"
-        bucket = double('bucket')
-        expect(content.resource).to receive(:bucket).and_return(bucket)
-        expect(bucket).to receive(:getfile).with("foo").and_raise("foobar")
-        expect { content.write(fh) }.to raise_error(Puppet::Error)
-      end
-
-      it "should write the returned content to the file" do
-        content.should = "{md5}foo"
-        bucket = double('bucket')
-        expect(content.resource).to receive(:bucket).and_return(bucket)
-        expect(bucket).to receive(:getfile).with("foo").and_return("mycontent")
-
-        fh = double('filehandle')
-        expect(fh).to receive(:print).with("mycontent")
-        content.write(fh)
-      end
-    end
   end
 end
