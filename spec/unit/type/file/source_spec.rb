@@ -131,7 +131,6 @@ describe Puppet::Type.type(:file).attrclass(:source), :uses_checksums => true do
       options = {
         :environment => environment,
         :links => :manage,
-        :source_permissions => :use,
         :checksum_type => :checksum
       }
       expect(Puppet::FileServing::Metadata.indirection).to receive(:find).with(@foobar_uri, options).and_return(nil)
@@ -205,26 +204,6 @@ describe Puppet::Type.type(:file).attrclass(:source), :uses_checksums => true do
       allow(Puppet.features).to receive(:root?).and_return(true)
     end
 
-    it "should not issue an error - except on Windows - if the source mode value is a Numeric" do
-      allow(@metadata).to receive(:mode).and_return(0173)
-      @resource[:source_permissions] = :use
-      if Puppet::Util::Platform.windows?
-        expect { @source.copy_source_values }.to raise_error("Should not have tried to use source owner/mode/group on Windows (file: my/file.pp, line: 5)")
-      else
-        expect { @source.copy_source_values }.not_to raise_error
-      end
-    end
-
-    it "should not issue an error - except on Windows - if the source mode value is a String" do
-      allow(@metadata).to receive(:mode).and_return("173")
-      @resource[:source_permissions] = :use
-      if Puppet::Util::Platform.windows?
-        expect { @source.copy_source_values }.to raise_error("Should not have tried to use source owner/mode/group on Windows (file: my/file.pp, line: 5)")
-      else
-        expect { @source.copy_source_values }.not_to raise_error
-      end
-    end
-
     it "should fail if there is no metadata" do
       allow(@source).to receive(:metadata).and_return(nil)
       expect(@source).to receive(:devfail).and_raise(ArgumentError)
@@ -252,162 +231,6 @@ describe Puppet::Type.type(:file).attrclass(:source), :uses_checksums => true do
         allow(Puppet::Util::Platform).to receive(:windows?).and_return(false)
       end
 
-      context "when source_permissions is `use`" do
-        before :each do
-          @resource[:source_permissions] = "use"
-          @resource[:checksum] = :sha256
-        end
-
-        it "should copy the metadata's owner, group, checksum, checksum_type, and mode to the resource if they are not set on the resource" do
-          @source.copy_source_values
-
-          expect(@resource[:owner]).to eq(100)
-          expect(@resource[:group]).to eq(200)
-          expect(@resource[:mode]).to eq("0173")
-
-          # Metadata calls it checksum and checksum_type, we call it content and checksum.
-          expect(@resource[:content]).to eq(@metadata.checksum)
-          expect(@resource[:checksum]).to eq(@metadata.checksum_type.to_sym)
-        end
-
-        it "should not copy the metadata's owner, group, checksum, checksum_type, and mode to the resource if they are already set" do
-          @resource[:owner] = 1
-          @resource[:group] = 2
-          @resource[:mode] = '173'
-          @resource[:content] = "foobar"
-
-          @source.copy_source_values
-
-          expect(@resource[:owner]).to eq(1)
-          expect(@resource[:group]).to eq(2)
-          expect(@resource[:mode]).to eq('0173')
-          expect(@resource[:content]).not_to eq(@metadata.checksum)
-          expect(@resource[:checksum]).not_to eq(@metadata.checksum_type.to_sym)
-        end
-
-        describe "and puppet is not running as root" do
-          before do
-            allow(Puppet.features).to receive(:root?).and_return(false)
-          end
-
-          it "should not try to set the owner" do
-            @source.copy_source_values
-            expect(@resource[:owner]).to be_nil
-          end
-
-          it "should not try to set the group" do
-            @source.copy_source_values
-            expect(@resource[:group]).to be_nil
-          end
-        end
-      end
-
-      context "when source_permissions is `use_when_creating`" do
-        before :each do
-          @resource[:source_permissions] = "use_when_creating"
-          expect(Puppet.features).to receive(:root?).and_return(true)
-          allow(@source).to receive(:local?).and_return(false)
-        end
-
-        context "when managing a new file" do
-          it "should copy owner and group from local sources" do
-            allow(@source).to receive(:local?).and_return(true)
-
-            @source.copy_source_values
-
-            expect(@resource[:owner]).to eq(100)
-            expect(@resource[:group]).to eq(200)
-            expect(@resource[:mode]).to eq("0173")
-          end
-
-          it "copies the remote owner" do
-            @source.copy_source_values
-
-            expect(@resource[:owner]).to eq(100)
-          end
-
-          it "copies the remote group" do
-            @source.copy_source_values
-
-            expect(@resource[:group]).to eq(200)
-          end
-
-          it "copies the remote mode" do
-            @source.copy_source_values
-
-            expect(@resource[:mode]).to eq("0173")
-          end
-        end
-
-        context "when managing an existing file" do
-          before :each do
-            allow(Puppet::FileSystem).to receive(:exist?).with(@resource[:path]).and_return(true)
-          end
-
-          it "should not copy owner, group or mode from local sources" do
-            allow(@source).to receive(:local?).and_return(true)
-
-            @source.copy_source_values
-
-            expect(@resource[:owner]).to be_nil
-            expect(@resource[:group]).to be_nil
-            expect(@resource[:mode]).to be_nil
-          end
-
-          it "preserves the local owner" do
-            @source.copy_source_values
-
-            expect(@resource[:owner]).to be_nil
-          end
-
-          it "preserves the local group" do
-            @source.copy_source_values
-
-            expect(@resource[:group]).to be_nil
-          end
-
-          it "preserves the local mode" do
-            @source.copy_source_values
-
-            expect(@resource[:mode]).to be_nil
-          end
-        end
-      end
-
-      context "when source_permissions is default" do
-        before :each do
-          allow(@source).to receive(:local?).and_return(false)
-          expect(Puppet.features).to receive(:root?).and_return(true)
-        end
-
-        it "should not copy owner, group or mode from local sources" do
-          allow(@source).to receive(:local?).and_return(true)
-
-          @source.copy_source_values
-
-          expect(@resource[:owner]).to be_nil
-          expect(@resource[:group]).to be_nil
-          expect(@resource[:mode]).to be_nil
-        end
-
-        it "preserves the local owner" do
-          @source.copy_source_values
-
-          expect(@resource[:owner]).to be_nil
-        end
-
-        it "preserves the local group" do
-          @source.copy_source_values
-
-          expect(@resource[:group]).to be_nil
-        end
-
-        it "preserves the local mode" do
-          @source.copy_source_values
-
-          expect(@resource[:mode]).to be_nil
-        end
-      end
     end
 
     describe "and the source is a link" do

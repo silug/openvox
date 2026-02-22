@@ -42,8 +42,7 @@ module Puppet
       specify whether to recreate links or follow them.
 
       _HTTP_ URIs cannot be used to recursively synchronize whole directory
-      trees. You cannot use `source_permissions` values other than `ignore`
-      because HTTP servers do not transfer any metadata that translates to
+      trees. HTTP servers do not transfer any metadata that translates to
       ownership or permission details.
 
       Puppet determines if file content is synchronized by computing a checksum
@@ -149,21 +148,6 @@ module Puppet
         copy_source_value(:checksum)
       end
 
-      # Take each of the stats and set them as states on the local file
-      # if a value has not already been provided.
-      [:owner, :mode, :group].each do |metadata_method|
-        next if metadata_method == :owner and !Puppet.features.root?
-        next if metadata_method == :group and !Puppet.features.root?
-
-        case resource[:source_permissions]
-        when :ignore, nil
-          next
-        when :use_when_creating
-          next if Puppet::FileSystem.exist?(resource[:path])
-        end
-
-        copy_source_value(metadata_method)
-      end
 
       if resource[:ensure] == :absent
         # We know all we need to
@@ -192,8 +176,7 @@ module Puppet
         options = {
           :environment => resource.catalog.environment_instance,
           :links => resource[:links],
-          :checksum_type => resource[:checksum],
-          :source_permissions => resource[:source_permissions]
+          :checksum_type => resource[:checksum]
         }
 
         data = Puppet::FileServing::Metadata.indirection.find(source, options)
@@ -345,36 +328,4 @@ module Puppet
     end
   end
 
-  Puppet::Type.type(:file).newparam(:source_permissions) do
-    desc <<-'EOT'
-      Whether (and how) Puppet should copy owner, group, and mode permissions from
-      the `source` to `file` resources when the permissions are not explicitly
-      specified. (In all cases, explicit permissions will take precedence.)
-      Valid values are `use`, `use_when_creating`, and `ignore`:
-
-      * `ignore` (the default) will never apply the owner, group, or mode from
-        the `source` when managing a file. When creating new files without explicit
-        permissions, the permissions they receive will depend on platform-specific
-        behavior. On POSIX, Puppet will use the umask of the user it is running as.
-        On Windows, Puppet will use the default DACL associated with the user it is
-        running as.
-      * `use` will cause Puppet to apply the owner, group,
-        and mode from the `source` to any files it is managing.
-      * `use_when_creating` will only apply the owner, group, and mode from the
-        `source` when creating a file; existing files will not have their permissions
-        overwritten.
-    EOT
-
-    defaultto :ignore
-    newvalues(:use, :use_when_creating, :ignore)
-    munge do |value|
-      value = value ? value.to_sym : :ignore
-      if @resource.file && @resource.line && value != :ignore
-        # TRANSLATORS "source_permissions" is a parameter name and should not be translated
-        Puppet.puppet_deprecation_warning(_("The `source_permissions` parameter is deprecated. Explicitly set `owner`, `group`, and `mode`."), file: @resource.file, line: @resource.line)
-      end
-
-      value
-    end
-  end
 end
