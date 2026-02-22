@@ -701,12 +701,7 @@ module Puppet
       Puppet Server please use the environment_cache endpoint",
       :hook => proc do |val|
         unless [0, 15, '15s'].include?(val)
-          Puppet.deprecation_warning(<<-WARNING)
-Fine grained control of filetimeouts is deprecated. In future
-releases this value will only determine if file content is cached.
-
-Valid values are 0 (never cache) and 15 (15 second minimum wait time).
-          WARNING
+          raise ArgumentError, _("Invalid filetimeout value '%{val}'. Valid values are 0 (never cache) and 15 (15 second minimum wait time).") % { val: val }
         end
       end
     },

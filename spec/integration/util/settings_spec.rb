@@ -84,7 +84,7 @@ environment=#{rune_utf8}
       }
     )
 
-    Puppet[:filetimeout] = '1s'
+    Puppet[:filetimeout] = 0
 
     File.open(config, 'w') do |file|
       file.puts <<-EOF
@@ -98,8 +98,6 @@ environment=toast
 
     # First reparse establishes WatchedFiles
     settings.reparse_config_files
-
-    sleep 1
 
     File.open(config, 'w') do |file|
       file.puts <<-EOF
