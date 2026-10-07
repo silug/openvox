@@ -19,14 +19,16 @@ module Puppet::FileServing::TerminusHelper
     result
   end
 
-  # Create model instances for all files in a fileset.
-  def path2instances(request, *paths)
+  # Create model instances for all files in a fileset. If a block is given,
+  # it is called for each file that is found in more than one of the paths,
+  # see Puppet::FileServing::Fileset.merge.
+  def path2instances(request, *paths, &block)
     filesets = paths.collect do |path|
       # Filesets support indirector requests as an options collection
       Puppet::FileServing::Fileset.new(path, request)
     end
 
-    Puppet::FileServing::Fileset.merge(*filesets).collect do |file, base_path|
+    Puppet::FileServing::Fileset.merge(*filesets, &block).collect do |file, base_path|
       path2instance(request, base_path, :relative_path => file)
     end
   end

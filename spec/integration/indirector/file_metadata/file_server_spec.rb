@@ -72,4 +72,80 @@ describe Puppet::Indirector::FileMetadata::FileServer, " when finding files" do
       end
     end
   end
+
+  describe "when modules provide the same plugin files" do
+    include PuppetSpec::Files
+
+    let(:modulepath) do
+      dir_containing('modules', {
+        'first' => { 'lib' => { 'puppet' => {
+          'functions' => { 'shared.rb' => 'first', 'first.rb' => '' },
+          'type' => { 'conflict' => 'a file' },
+        } } },
+        'second' => { 'lib' => { 'puppet' => {
+          'functions' => { 'shared.rb' => 'second', 'second.rb' => '' },
+          'type' => { 'conflict' => { 'nested.rb' => '' } },
+        } } },
+        'third' => { 'lib' => { 'puppet' => { 'functions' => { 'third.rb' => '' } } } },
+      })
+    end
+    let(:env) { Puppet::Node::Environment.create(:dupes, [modulepath]) }
+
+    def search
+      Puppet::FileServing::Metadata.indirection.search("plugins", :environment => env, :recurse => true)
+    end
+
+    def duplicate_warnings
+      @logs.select { |log| log.level == :warning && log.message =~ /provided by more than one directory/ }
+    end
+
+    def path_of(module_name, *parts)
+      File.join(modulepath, module_name, 'lib', 'puppet', *parts)
+    end
+
+    it "warns about the files that are provided more than once" do
+      result = search
+      used = result.find { |m| m.relative_path == 'puppet/functions/shared.rb' }.full_path
+      ignored = ([path_of('first', 'functions', 'shared.rb'), path_of('second', 'functions', 'shared.rb')] - [used]).first
+
+      expect(duplicate_warnings.length).to eq(1)
+      message = duplicate_warnings.first.message
+      expect(message).to include("'plugins' mount in environment 'dupes'")
+      expect(message).to include("puppet/functions/shared.rb: using #{used}, ignoring #{ignored}")
+      expect(message).to include("puppet/type/conflict: using ")
+    end
+
+    it "does not warn about directories that are provided more than once" do
+      search
+
+      expect(duplicate_warnings.first.message).not_to match(%r{puppet/functions:|puppet:|\.:})
+    end
+
+    it "only warns once for the same duplicates" do
+      search
+      search
+
+      expect(duplicate_warnings.length).to eq(1)
+    end
+
+    it "does not warn when no files are provided more than once" do
+      FileUtils.rm_rf(File.join(modulepath, 'second'))
+      search
+
+      expect(duplicate_warnings).to be_empty
+    end
+
+    it "limits the number of files listed" do
+      21.times do |i|
+        %w[first second].each do |mod|
+          File.write(File.join(modulepath, mod, 'lib', 'puppet', 'functions', "extra#{i}.rb"), '')
+        end
+      end
+      search
+
+      message = duplicate_warnings.first.message
+      expect(message.lines.count { |line| line.include?(': using ') }).to eq(Puppet::Indirector::FileServer::MAX_DUPLICATES_LISTED)
+      expect(message).to include('(and 3 more)')
+    end
+  end
 end

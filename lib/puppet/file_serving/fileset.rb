@@ -14,12 +14,20 @@ class Puppet::FileServing::Fileset
   # It's a hash because we need to know the relative path of each file,
   # and the base directory.
   #   This will probably only ever be used for searching for plugins.
+  #
+  # If a block is given, it is called for each relative path that more than
+  # one fileset contains, with the relative path, the base directory whose
+  # copy is used, and the base directory whose copy is ignored.
   def self.merge(*filesets)
     result = {}
 
     filesets.each do |fileset|
       fileset.files.each do |file|
-        result[file] ||= fileset.path
+        if result.include?(file)
+          yield file, result[file], fileset.path if block_given?
+        else
+          result[file] = fileset.path
+        end
       end
     end
 

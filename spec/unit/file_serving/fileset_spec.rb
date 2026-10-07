@@ -383,6 +383,23 @@ describe Puppet::FileServing::Fileset do
       allow(Dir).to receive(:entries).and_return([])
     end
 
+    it "yields each file found in more than one fileset with the used and ignored base paths" do
+      expect(Dir).to receive(:entries).with(make_absolute("/first/path"), {encoding: Encoding::UTF_8}).and_return(%w{one shared})
+      expect(Dir).to receive(:entries).with(make_absolute("/second/path"), {encoding: Encoding::UTF_8}).and_return(%w{two shared})
+      expect(Dir).to receive(:entries).with(make_absolute("/third/path"), {encoding: Encoding::UTF_8}).and_return(%w{shared})
+
+      duplicates = []
+      result = Puppet::FileServing::Fileset.merge(*@filesets) { |*duplicate| duplicates << duplicate }
+
+      expect(result["shared"]).to eq(make_absolute("/first/path"))
+      expect(duplicates).to contain_exactly(
+        [".", make_absolute("/first/path"), make_absolute("/second/path")],
+        [".", make_absolute("/first/path"), make_absolute("/third/path")],
+        ["shared", make_absolute("/first/path"), make_absolute("/second/path")],
+        ["shared", make_absolute("/first/path"), make_absolute("/third/path")]
+      )
+    end
+
     it "returns a hash of all files in each fileset with the value being the base path" do
       expect(Dir).to receive(:entries).with(make_absolute("/first/path"), {encoding: Encoding::UTF_8}).and_return(%w{one uno})
       expect(Dir).to receive(:entries).with(make_absolute("/second/path"), {encoding: Encoding::UTF_8}).and_return(%w{two dos})

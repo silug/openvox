@@ -58,6 +58,18 @@ describe Puppet::FileServing::TerminusHelper do
     @helper.path2instances(@request, "/first/file", "/second/file")
   end
 
+  it "should pass a given block to the fileset merge" do
+    first = double('fileset', :files => ['.', 'shared'], :path => "/first/file")
+    expect(Puppet::FileServing::Fileset).to receive(:new).with("/first/file", anything).and_return(first)
+    second = double('fileset', :files => ['.', 'shared'], :path => "/second/file")
+    expect(Puppet::FileServing::Fileset).to receive(:new).with("/second/file", anything).and_return(second)
+    allow(@model).to receive(:new).and_return(double('instance', :collect => nil))
+
+    duplicates = []
+    @helper.path2instances(@request, "/first/file", "/second/file") { |file, *| duplicates << file }
+    expect(duplicates).to eq(['.', 'shared'])
+  end
+
   it "should pass the indirection request to the Fileset at initialization" do
     expect(Puppet::FileServing::Fileset).to receive(:new).with(anything, @request).and_return(@fileset)
     @helper.path2instances(@request, "/my/file")

@@ -9,6 +9,9 @@ require_relative '../../puppet/indirector/terminus'
 class Puppet::Indirector::FileServer < Puppet::Indirector::Terminus
   include Puppet::FileServing::TerminusHelper
 
+  # The most files to list when warning about files provided more than once
+  MAX_DUPLICATES_LISTED = 20
+
   # Is the client authorized to perform this action?
   def authorized?(request)
     return false unless [:find, :search].include?(request.method)
@@ -45,10 +48,45 @@ class Puppet::Indirector::FileServer < Puppet::Indirector::Terminus
       Puppet.info _("Could not find filesystem info for file '%{request}' in environment %{env}") % { request: request.key, env: request.environment }
       return nil
     end
-    path2instances(request, *paths)
+    duplicates = []
+    instances = path2instances(request, *paths) do |file, used_path, ignored_path|
+      duplicates << [file, used_path, ignored_path] if conflicting_files?(file, used_path, ignored_path)
+    end
+    warn_about_duplicates(mount, request, duplicates) unless duplicates.empty?
+    instances
   end
 
   private
+
+  # Mounts like `plugins` merge several directories, so directories such as
+  # `puppet/functions` are naturally found in more than one of them. Only
+  # files conflict, since only one copy of each can be served.
+  def conflicting_files?(file, used_path, ignored_path)
+    return false if file == '.'
+
+    !(File.directory?(File.join(used_path, file)) && File.directory?(File.join(ignored_path, file)))
+  end
+
+  # Warn once per environment and mount about files that are provided by
+  # more than one directory, e.g. two modules that both ship
+  # `lib/puppet/functions/foo.rb`. The warning is repeated only if the
+  # duplicates change, since every agent run searches the mount again.
+  def warn_about_duplicates(mount, request, duplicates)
+    environment = request.environment.to_s
+    listed = duplicates.first(MAX_DUPLICATES_LISTED).map do |file, used_path, ignored_path|
+      "\n   " + _("%{file}: using %{used}, ignoring %{ignored}") % {
+        file: file, used: File.join(used_path, file), ignored: File.join(ignored_path, file)
+      }
+    end
+    if duplicates.length > MAX_DUPLICATES_LISTED
+      listed << "\n   " + _("(and %{count} more)") % { count: duplicates.length - MAX_DUPLICATES_LISTED }
+    end
+
+    message = _("Some files in the '%{mount}' mount in environment '%{environment}' are provided by more than one directory; only one copy of each is served:") % {
+      mount: mount.name, environment: environment
+    }
+    Puppet.warn_once('duplicate_mount_files', [:duplicate_mount_files, environment, mount.name, duplicates], message + listed.join, :default, :default)
+  end
 
   # Our fileserver configuration, if needed.
   def configuration
